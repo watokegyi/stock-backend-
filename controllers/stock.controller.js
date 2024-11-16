@@ -324,31 +324,32 @@ exports.importProductData = async (req, res) => {
 
     if (!file) {
       console.error("File not received.");
-      return res.status(400).send("No file uploaded.");
+      return res
+        .status(400)
+        .json({ status: "error", message: "No file uploaded." });
     }
 
     console.log("File received:", file.originalname);
 
-    
     const workbook = XLSX.read(file.buffer, { type: "buffer" });
-
     const sheetNames = workbook.SheetNames;
-    console.log("Sheet names in file:", sheetNames);
 
     if (sheetNames.length === 0) {
       console.error("No sheets found in the workbook.");
-      return res.status(400).send("The Excel file contains no sheets.");
+      return res
+        .status(400)
+        .json({
+          status: "error",
+          message: "The Excel file contains no sheets.",
+        });
     }
 
-  
     const firstSheetName = sheetNames[0];
-    console.log(`Processing the first sheet: ${firstSheetName}`);
-
     const sheet = workbook.Sheets[firstSheetName];
     const data = XLSX.utils.sheet_to_json(sheet);
-    console.log("Parsed data from the sheet:", JSON.stringify(data, null, 2));
 
-   
+    const skippedRows = [];
+
     for (const row of data) {
       const {
         Id,
@@ -367,18 +368,15 @@ exports.importProductData = async (req, res) => {
         product_t_id,
       } = row;
 
-    
       if (!product_name || !sku || !quantity || !price) {
         console.error("Skipping invalid row:", row);
+        skippedRows.push(row);
         continue;
       }
 
       let productKind;
 
-     
       if (!product_t_id || product_t_id === "") {
-        console.log(`Creating new ProductKind for Id: ${Id}`);
-      
         [productKind] = await ProductKind.findOrCreate({
           where: { sku: productKindSku },
           defaults: {
@@ -390,7 +388,6 @@ exports.importProductData = async (req, res) => {
           },
         });
       } else {
-        
         [productKind] = await ProductKind.findOrCreate({
           where: { id: product_t_id },
           defaults: {
@@ -403,7 +400,6 @@ exports.importProductData = async (req, res) => {
         });
       }
 
-      
       await Product.create({
         no,
         product_name,
@@ -417,9 +413,18 @@ exports.importProductData = async (req, res) => {
     }
 
     console.log("Product data imported successfully.");
-    return res.status(200).send("Product data imported successfully.");
+    return res.status(200).json({
+      status: "success",
+      message: "Product data imported successfully.",
+      skippedRows,
+    });
   } catch (error) {
     console.error("Error importing product data:", error.message);
-    return res.status(500).send("Error importing product data.");
+    return res.status(500).json({
+      status: "error",
+      message: "Error importing product data.",
+      error: error.message,
+    });
   }
 };
+
