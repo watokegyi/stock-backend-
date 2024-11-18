@@ -94,6 +94,7 @@ exports.findProductsByProductKind = async (req, res) => {
 
     const findOptions = {
       where: condition,
+      order: [["id", "ASC"]],
       include: [
         {
           model: Product,
@@ -254,6 +255,7 @@ exports.exportProductData = async (req, res) => {
   try {
     
     const productKinds = await ProductKind.findAll({
+      order: [["id", "ASC"]],
       include: [
         {
           model: Product,
