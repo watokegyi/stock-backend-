@@ -129,6 +129,10 @@ exports.findProductsByProductKind = async (req, res) => {
         no: product.no,
         product_name: product.product_name,
         sku: product.sku,
+<<<<<<< HEAD
+=======
+        description: product.description,
+>>>>>>> 787bcd51207effcefa16c6863984c179966430c2
         color: product.color,
         size: product.size,
         imgurl: product.imgurl,
