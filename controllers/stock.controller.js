@@ -3,7 +3,7 @@ const path = require("path");
 const multer = require("multer");
 const { Op } = require("sequelize"); 
 const XLSX = require("xlsx"); 
-const fs = require("fs");
+
 
 
 const{ProductKind,Product}=require("../models/index.js");
@@ -72,7 +72,7 @@ exports.findProductsByProductKind = async (req, res) => {
   try {
     const {
       id,
-      productype,
+      productname,
       sku,
       colors,
       size,
@@ -84,7 +84,7 @@ exports.findProductsByProductKind = async (req, res) => {
 
   
     if (id) condition.id = id;
-    if (productype) condition.productype = { [Op.like]: `%${productype}%` };
+    if (productname) condition.productname = { [Op.like]: `%${productname}%` };
     if (sku) condition.sku = { [Op.like]: `%${sku}%` };
     if (colors) condition.colors = { [Op.contains]: [colors] };
     if (size) condition.size = { [Op.contains]: [size] };
@@ -119,7 +119,7 @@ exports.findProductsByProductKind = async (req, res) => {
     const formattedData = productKinds.map((productKind) => ({
       productKind: {
         id: productKind.id,
-        productype: productKind.productype,
+        productname: productKind.productname,
         sku: productKind.sku,
         colors: productKind.colors,
         size: productKind.size,
@@ -129,10 +129,6 @@ exports.findProductsByProductKind = async (req, res) => {
         no: product.no,
         product_name: product.product_name,
         sku: product.sku,
-<<<<<<< HEAD
-=======
-        description: product.description,
->>>>>>> 787bcd51207effcefa16c6863984c179966430c2
         color: product.color,
         size: product.size,
         imgurl: product.imgurl,
@@ -268,36 +264,23 @@ exports.exportProductData = async (req, res) => {
     });
 
     
-    const productKindData = productKinds.map((productKind) => ({
-      id: productKind.id,
-      productype: productKind.productype,
-      sku: productKind.sku,
-      colors: productKind.colors ? productKind.colors.join(", ") : "",
-      size: productKind.size ? productKind.size.join(", ") : "",
-      description: productKind.description,
-    }));
-
-    
     const combinedData = [];
 
     productKinds.forEach((productKind) => {
       productKind.product_list.forEach((product) => {
         combinedData.push({
-          Id: productKind.id,
-          productype: productKind.productype,
-          productKindSku: productKind.sku,
-          colors: productKind.colors ? productKind.colors.join(", ") : "",
-          sizes: productKind.size ? productKind.size.join(", ") : "",
+          ProductName: product.product_name,
+          SKU: product.sku,
+          Color: product.color,
+          Size: product.size,
+          Quantity: product.quantity,
+          Price: product.price,
+          ProductType: productKind.productname,
+          ProductKindSku: productKind.sku,
+          Colors: productKind.colors ? productKind.colors.join(", ") : "",
+          Sizes: productKind.size ? productKind.size.join(", ") : "",
           Description: productKind.description,
-
-          no: product.no,
-          product_name: product.product_name,
-          sku: product.sku,
-          color: product.color,
-          size: product.size,
-          quantity: product.quantity,
-          price: product.price,
-          product_t_id: productKind.id,
+          
         });
       });
     });
@@ -357,62 +340,45 @@ exports.importProductData = async (req, res) => {
 
     for (const row of data) {
       const {
-        Id,
-        productype,
-        productKindSku,
-        colors,
-        sizes,
-        Description,
-        no,
-        product_name,
-        sku,
-        color,
-        size,
-        quantity,
-        price,
-        product_t_id,
+        ProductName,
+            SKU,
+            Color,
+            Size,
+            Quantity,
+            Price,
+            ProductType,
+            ProductKindSKU,
+            Colors,
+            Sizes,
+            Description,
       } = row;
 
-      if (!product_name || !sku || !quantity || !price) {
+      if(!ProductName || !SKU || !Quantity || !Price || !ProductType || !ProductKindSKU) {
         console.error("Skipping invalid row:", row);
         skippedRows.push(row);
         continue;
       }
 
-      let productKind;
-
-      if (!product_t_id || product_t_id === "") {
-        [productKind] = await ProductKind.findOrCreate({
+     
+      const  [productKind] = await ProductKind.findOrCreate({
           where: { sku: productKindSku },
           defaults: {
-            productype,
-            sku: productKindSku,
-            colors: colors ? colors.split(",") : [],
-            size: sizes ? sizes.split(",") : [],
-            description: Description,
+            productname: ProductType,
+            sku: ProductKindSKU,
+            colors: Colors ? Colors.split(",") : null,
+            size: Sizes ? Sizes.split(",") : null,
+            description: Description || null,
           },
         });
-      } else {
-        [productKind] = await ProductKind.findOrCreate({
-          where: { id: product_t_id },
-          defaults: {
-            productype,
-            sku: productKindSku,
-            colors: colors ? colors.split(",") : [],
-            size: sizes ? sizes.split(",") : [],
-            description: Description,
-          },
-        });
-      }
+      
 
       await Product.create({
-        no,
-        product_name,
-        sku,
-        color,
-        size,
-        quantity,
-        price,
+        product_name: ProductName,
+        sku: SKU,
+        color: Color || null,
+        size: Size || null,
+        quantity: Quantity,
+        price: Price,
         product_t_id: productKind.id,
       });
     }

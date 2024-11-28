@@ -1,14 +1,15 @@
 const pool = require("../config/configwithquery.js");
 const XLSX = require("xlsx"); 
+
+
+
 const querstockcontroller = {
   
   findProductsByProductKind:async (req, res) => {
-    console.log("findProductsByProductKind route hit");
-  
     try {
       const {
         id,
-        productype,
+        productname,
         sku,
         colors,
         size,
@@ -16,7 +17,6 @@ const querstockcontroller = {
         limit = 10, 
       } = req.query;
   
-      
       const baseQuery = `
         SELECT pk.*, 
                json_agg(p.*) AS product_list
@@ -32,9 +32,9 @@ const querstockcontroller = {
         whereClauses.push(`pk.id = $${paramIndex++}`);
         queryParams.push(id);
       }
-      if (productype) {
-        whereClauses.push(`pk.productype ILIKE $${paramIndex++}`);
-        queryParams.push(`%${productype}%`);
+      if (productname) {
+        whereClauses.push(`pk.productname ILIKE $${paramIndex++}`);
+        queryParams.push(`%${productname}%`);
       }
       if (sku) {
         whereClauses.push(`pk.sku ILIKE $${paramIndex++}`);
@@ -52,6 +52,8 @@ const querstockcontroller = {
       const whereClause = whereClauses.length
         ? `WHERE ${whereClauses.join(" AND ")}`
         : "";
+        console.log(whereClause);
+        console.log(whereClauses);
   
       const pagination = page && limit;
       const offset = pagination ? (page - 1) * limit : 0;
@@ -64,6 +66,7 @@ const querstockcontroller = {
         ORDER BY pk.id ASC
         ${pagination ? `LIMIT $${paramIndex++} OFFSET $${paramIndex}` : ""}
       `;
+      console.log(finalQuery,queryParams)
   
       if (pagination) {
         queryParams.push(parseInt(limit), offset);
@@ -85,7 +88,7 @@ const querstockcontroller = {
       const formattedData = productKinds.map((productKind) => ({
         productKind: {
           id: productKind.id,
-          productype: productKind.productype,
+          productname: productKind.productname,
           sku: productKind.sku,
           colors: productKind.colors,
           size: productKind.size,
@@ -166,16 +169,16 @@ const querstockcontroller = {
   
       let mainProductId;
   
-      if (id && id !==0 && id !== '0') {
+      if (id ) {
       
         const updateProductQuery = `
           UPDATE productkinds
-          SET productype = $1, description = $2, colors = $3, size = $4, sku = $5
+          SET productname = $1, description = $2, colors = $3, size = $4, sku = $5
           WHERE id = $6
           RETURNING id;
         `;
         const updateResult = await client.query(updateProductQuery, [
-          productData.productype,
+          productData.productname,
           productData.description,
           productData.colors,
           productData.size,
@@ -186,14 +189,13 @@ const querstockcontroller = {
       }
   
       if (!mainProductId) {
-       
         const insertProductQuery = `
-          INSERT INTO productkinds (productype, description, colors, size, sku)
+          INSERT INTO productkinds (productname, description, colors, size, sku)
           VALUES ($1, $2, $3, $4, $5)
           RETURNING id;
         `;
         const insertResult = await client.query(insertProductQuery, [
-          productData.productype,
+          productData.productname,
           productData.description,
           productData.colors,
           productData.size,
@@ -201,8 +203,6 @@ const querstockcontroller = {
         ]);
         mainProductId = insertResult.rows[0].id;
       }
-  
-      
       if (deleteVariantIds && deleteVariantIds.length > 0) {
         const deleteQuery = `
           DELETE FROM product_list
@@ -210,8 +210,6 @@ const querstockcontroller = {
         `;
         await client.query(deleteQuery, [deleteVariantIds]);
       }
-  
-      
       for (const variant of generatedVariants) {
         if (variant.no) {
         
@@ -279,7 +277,7 @@ const querstockcontroller = {
           pl.size, 
           pl.quantity, 
           pl.price, 
-          pk.productype, 
+          pk.productname, 
           pk.sku AS productkind_sku, 
           ARRAY_TO_STRING(pk.colors, ',') AS productkind_colors, 
           ARRAY_TO_STRING(pk.size, ',') AS productkind_sizes, 
@@ -302,8 +300,8 @@ const querstockcontroller = {
         Color: row.color,
         Size: row.size,
         Quantity: row.quantity,
-        Price: row.price,
-        ProductType: row.productype,
+        Price: parseFloat(row.price).toFixed(2),
+        ProductType: row.productname,
         ProductKindSKU: row.productkind_sku,
         Colors: row.productkind_colors || "",
         Sizes: row.productkind_sizes || "",
@@ -333,16 +331,12 @@ const querstockcontroller = {
     }
   },
 
-
   importProductData : async (req, res) => {
     try {
       const file = req.file;
   
       if (!file) {
-        console.error("File not received.");
-        return res
-          .status(400)
-          .json({ status: "error", message: "No file uploaded." });
+        return res.status(400).json({ message: "No file uploaded." });
       }
   
       console.log("File received:", file.originalname);
@@ -351,10 +345,7 @@ const querstockcontroller = {
       const sheetNames = workbook.SheetNames;
   
       if (sheetNames.length === 0) {
-        console.error("No sheets found in the workbook.");
-        return res
-          .status(400)
-          .json({ status: "error", message: "The Excel file contains no sheets." });
+        return res.status(400).json({ message: "The Excel file contains no sheets." });
       }
   
       const firstSheetName = sheetNames[0];
@@ -380,48 +371,49 @@ const querstockcontroller = {
             Description,
           } = row;
   
-         
-          if (!ProductName || !SKU || !Quantity || !Price) {
-            console.error("Skipping invalid row:", row);
+          if (!ProductName || !SKU || !Quantity || !Price || !ProductType || !ProductKindSKU) {
             skippedRows.push(row);
             continue;
           }
   
-          let productKindId;
-  
           
-          const productKindQuery = `
-            INSERT INTO productkinds (productype, sku, colors, size, description)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (sku) DO UPDATE 
-            SET colors = EXCLUDED.colors, 
-                size = EXCLUDED.size, 
-                description = EXCLUDED.description
-            RETURNING id;
+          let productKindId;
+          const findProductKindQuery = `
+            SELECT id FROM productkinds
+            WHERE productname = $1 AND sku = $2 AND colors = $3 AND size = $4
           `;
-  
-          const productKindResult = await client.query(productKindQuery, [
+          const productKindResult = await client.query(findProductKindQuery, [
             ProductType,
             ProductKindSKU,
             Colors ? Colors.split(",") : [],
             Sizes ? Sizes.split(",") : [],
-            Description,
           ]);
   
-          productKindId = productKindResult.rows[0].id;
+          if (productKindResult.rows.length > 0) {
+            productKindId = productKindResult.rows[0].id;
+          } else {
+            
+            const insertProductKindQuery = `
+              INSERT INTO productkinds (productname, sku, colors, size, description)
+              VALUES ($1, $2, $3, $4, $5)
+              RETURNING id
+            `;
+            const insertProductKindResult = await client.query(insertProductKindQuery, [
+              ProductType,
+              ProductKindSKU,
+              Colors ? Colors.split(",") : [],
+              Sizes ? Sizes.split(",") : [],
+              Description,
+            ]);
+            productKindId = insertProductKindResult.rows[0].id;
+          }
   
-          
-          const productQuery = `
+         
+          const insertProductQuery = `
             INSERT INTO product_list (product_name, sku, color, size, quantity, price, product_t_id)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (sku) DO UPDATE 
-            SET color = EXCLUDED.color, 
-                size = EXCLUDED.size, 
-                quantity = EXCLUDED.quantity, 
-                price = EXCLUDED.price;
           `;
-  
-          await client.query(productQuery, [
+          await client.query(insertProductQuery, [
             ProductName,
             SKU,
             Color,
@@ -432,9 +424,7 @@ const querstockcontroller = {
           ]);
         }
   
-        console.log("Product data imported successfully.");
         return res.status(200).json({
-          status: "success",
           message: "Product data imported successfully.",
           skippedRows,
         });
@@ -444,12 +434,12 @@ const querstockcontroller = {
     } catch (error) {
       console.error("Error importing product data:", error.message);
       return res.status(500).json({
-        status: "error",
         message: "Error importing product data.",
         error: error.message,
       });
     }
-  }
+  },
+  
   
 };
 

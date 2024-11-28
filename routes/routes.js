@@ -33,7 +33,7 @@ module.exports = (app) => {
   router.post(
     "/productdata/import",  
     upload.single("file"),
-    productController.importProductData
+    querstockcontroller.importProductData
   );
   router.delete("/allproductbypK/:id",querstockcontroller.deleteProductKindAndProduct);
   router.put(
